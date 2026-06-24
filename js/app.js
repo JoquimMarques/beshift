@@ -27,8 +27,8 @@ window.showNotification = (message, type = 'success') => {
 if (auth) {
     onAuthStateChanged(auth, (user) => {
         const path = window.location.pathname;
-        const isDashboard = path.includes('dashboard.html');
-        const isLogin = path.includes('login.html');
+        const isDashboard = path.includes('dashboard.html') || path.endsWith('/dashboard') || path === '/dashboard/';
+        const isLogin = path.includes('login.html') || path.endsWith('/login') || path === '/login/';
 
         if (user) {
             // Usuário está logado
@@ -197,7 +197,7 @@ async function fetchStats(user) {
                     </span>
                 </div>
                 <div class="card-body">
-                    <a href="${shortUrl}" target="_blank" class="short-url">${window.location.host}/${link.shortId}</a>
+                    <a href="${shortUrl}" target="_blank" class="short-url">beshift.com/${link.shortId}</a>
                     <a href="${link.originalUrl}" target="_blank" class="original-url" title="${link.originalUrl}">${link.originalUrl}</a>
                 </div>
                 <div class="card-footer">
