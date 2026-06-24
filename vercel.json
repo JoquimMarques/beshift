@@ -3,8 +3,12 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/(?!dashboard|login|index|css|js|api)([^/]+)",
-      "destination": "https://beshift.onrender.com/$1"
+      "source": "/api/:match*",
+      "destination": "https://beshift.onrender.com/api/:match*"
+    },
+    {
+      "source": "/:alias",
+      "destination": "https://beshift.onrender.com/:alias"
     }
   ]
 }
