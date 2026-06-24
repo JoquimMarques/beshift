@@ -336,13 +336,54 @@ td {
 }
 
 @media (max-width: 768px) {
+  .dashboard-container {
+    padding: 0 0.5rem;
+    margin: 1rem auto;
+  }
+  
+  .glass-panel {
+    padding: 1rem;
+    border-radius: 12px;
+  }
+
   .shortener-box {
     flex-direction: column;
     align-items: stretch;
   }
-
+  
   .dashboard-header h1 {
-    font-size: 2rem;
+    font-size: 1.8rem;
+  }
+
+  .links-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .link-card {
+    padding: 1rem;
+  }
+
+  header {
+    padding: 1rem 1rem;
+  }
+
+  .logo {
+    font-size: 1.5rem;
+  }
+  
+  .nav-links {
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-links span {
+    font-size: 0.85rem;
+  }
+
+  .nav-links button {
+    margin-left: 0.8rem;
+    font-size: 0.9rem;
   }
 }
 
