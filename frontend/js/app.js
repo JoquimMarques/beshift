@@ -5,7 +5,7 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https:/
 //  ⚙️ API CONFIGURATION
 // ==========================================
 // Altere isso para a URL do seu Backend no Render antes de enviar para a Vercel
-const API_BASE_URL = 'http://localhost:3000'; 
+const API_BASE_URL = 'https://beshift.onrender.com'; 
 
 // Elementos do DOM
 const notification = document.getElementById('notification');
