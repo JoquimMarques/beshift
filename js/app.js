@@ -43,7 +43,6 @@ if (auth) {
             }
             
             if (isDashboard) {
-                document.getElementById('dashboardBody').style.display = 'block';
                 document.getElementById('userEmailDisplay').textContent = user.email;
                 fetchStats(user);
             }
@@ -62,9 +61,8 @@ if (auth) {
     });
 } else {
     // Se a autenticação não foi iniciada devido a falta de configuração
-    if (window.location.pathname.includes('dashboard.html')) {
-        document.getElementById('dashboardBody').style.display = 'block';
-        document.getElementById('linksTableBody').innerHTML = '<tr><td colspan="5" style="text-align: center; color: #EF4444; padding: 2rem;">Firebase não configurado. Por favor, adicione suas credenciais em js/firebase-config.js</td></tr>';
+    if (window.location.pathname.includes('dashboard.html') || window.location.pathname.endsWith('/dashboard')) {
+        document.getElementById('linksGrid').innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #EF4444; padding: 2rem;">Firebase não configurado. Por favor, adicione suas credenciais em js/firebase-config.js</div>';
     }
 }
 
