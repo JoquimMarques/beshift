@@ -1,10 +1,10 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/$1"
+      "source": "/(?!dashboard|login|index|css|js|api)([^/]+)",
+      "destination": "https://beshift.onrender.com/$1"
     }
   ]
 }

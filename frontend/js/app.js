@@ -5,7 +5,7 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https:/
 //  ⚙️ API CONFIGURATION
 // ==========================================
 // Altere isso para a URL do seu Backend no Render antes de enviar para a Vercel
-const API_BASE_URL = 'https://beshift.onrender.com'; 
+const API_BASE_URL = 'https://beshift.onrender.com';
 
 // Elementos do DOM
 const notification = document.getElementById('notification');
@@ -27,9 +27,9 @@ window.showNotification = (message, type = 'success') => {
 if (auth) {
     onAuthStateChanged(auth, (user) => {
         const path = window.location.pathname;
-        const isDashboard = path.includes('dashboard.html');
-        const isLogin = path.includes('login.html');
-        
+        const isDashboard = path.includes('dashboard.html') || path.endsWith('/dashboard') || path === '/dashboard/';
+        const isLogin = path.includes('login.html') || path.endsWith('/login') || path === '/login/';
+
         if (user) {
             // Usuário está logado
             if (navLoginBtn) navLoginBtn.classList.add('hidden');
@@ -37,11 +37,11 @@ if (auth) {
                 navDashboardBtn.classList.remove('hidden');
                 navDashboardBtn.onclick = () => window.location.href = 'dashboard.html';
             }
-            
+
             if (isLogin) {
                 window.location.href = 'dashboard.html';
             }
-            
+
             if (isDashboard) {
                 document.getElementById('userEmailDisplay').textContent = user.email;
                 fetchStats(user);
@@ -53,7 +53,7 @@ if (auth) {
                 navLoginBtn.onclick = () => window.location.href = 'login.html';
             }
             if (navDashboardBtn) navDashboardBtn.classList.add('hidden');
-            
+
             if (isDashboard) {
                 window.location.href = 'login.html';
             }
@@ -73,8 +73,8 @@ const loginForm = document.getElementById('loginForm');
 if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        if(!auth) {
+
+        if (!auth) {
             showNotification('O Firebase ainda não está configurado.', 'error');
             return;
         }
@@ -82,10 +82,10 @@ if (loginForm) {
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
         const loginBtn = document.getElementById('loginBtn');
-        
+
         loginBtn.innerHTML = '<span class="loading"></span>';
         loginBtn.disabled = true;
-        
+
         try {
             await signInWithEmailAndPassword(auth, email, password);
             showNotification('Login realizado com sucesso!');
@@ -118,10 +118,10 @@ if (shortenForm) {
         const originalUrl = document.getElementById('originalUrl').value;
         const customAlias = document.getElementById('customAlias').value;
         const shortenBtn = document.getElementById('shortenBtn');
-        
+
         shortenBtn.innerHTML = '<span class="loading"></span>';
         shortenBtn.disabled = true;
-        
+
         try {
             const token = await auth.currentUser.getIdToken();
             const response = await fetch(`${API_BASE_URL}/api/shorten`, {
@@ -132,19 +132,19 @@ if (shortenForm) {
                 },
                 body: JSON.stringify({ originalUrl, customAlias })
             });
-            
+
             const data = await response.json();
-            
+
             if (!response.ok) {
                 throw new Error(data.error || 'Falha ao encurtar a URL');
             }
-            
+
             showNotification('URL encurtada com sucesso!');
             document.getElementById('originalUrl').value = '';
             document.getElementById('customAlias').value = '';
             const addLinkModal = document.getElementById('addLinkModal');
-            if(addLinkModal) addLinkModal.classList.add('hidden');
-            fetchStats(auth.currentUser); 
+            if (addLinkModal) addLinkModal.classList.add('hidden');
+            fetchStats(auth.currentUser);
         } catch (error) {
             showNotification(error.message, 'error');
         } finally {
@@ -156,8 +156,8 @@ if (shortenForm) {
 
 async function fetchStats(user) {
     const linksGrid = document.getElementById('linksGrid');
-    if(!linksGrid) return; // Se não estivermos no dashboard
-    
+    if (!linksGrid) return; // Se não estivermos no dashboard
+
     try {
         const token = await user.getIdToken();
         const response = await fetch(`${API_BASE_URL}/api/stats`, {
@@ -165,27 +165,27 @@ async function fetchStats(user) {
                 'Authorization': `Bearer ${token}`
             }
         });
-        
+
         const data = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(data.error || 'Falha ao buscar estatísticas');
         }
-        
+
         linksGrid.innerHTML = '';
-        
+
         if (data.links.length === 0) {
             linksGrid.innerHTML = '<div style="text-align: center; padding: 3rem; width: 100%; grid-column: 1 / -1; color: var(--text-muted);">Nenhum link encontrado. Clique no botão de + para criar!</div>';
             return;
         }
-        
+
         data.links.forEach(link => {
-            const shortUrl = `${API_BASE_URL}/${link.shortId}`;
+            const shortUrl = `${window.location.origin}/${link.shortId}`;
             const date = new Date(link.createdAt).toLocaleDateString('pt-BR');
-            
+
             const card = document.createElement('div');
             card.className = 'link-card';
-            
+
             card.innerHTML = `
                 <div class="card-header">
                     <span class="card-date">${date}</span>
@@ -213,7 +213,7 @@ async function fetchStats(user) {
             `;
             linksGrid.appendChild(card);
         });
-        
+
         // Adicionar eventos de copiar
         document.querySelectorAll('.btn-copy').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -223,7 +223,7 @@ async function fetchStats(user) {
                     const originalHTML = btnElement.innerHTML;
                     btnElement.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
                     btnElement.style.color = '#10B981';
-                    
+
                     setTimeout(() => {
                         btnElement.innerHTML = originalHTML;
                         btnElement.style.color = '';
@@ -232,7 +232,7 @@ async function fetchStats(user) {
                 });
             });
         });
-        
+
         // Adicionar eventos de estatísticas
         document.querySelectorAll('.btn-stats').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -240,7 +240,7 @@ async function fetchStats(user) {
                 openStatsModal(shortId);
             });
         });
-        
+
     } catch (error) {
         console.error("Erro ao buscar estatísticas:", error);
         linksGrid.innerHTML = `<div style="text-align: center; color: #EF4444; padding: 2rem; grid-column: 1 / -1;">Erro ao carregar os links: Verifique se o backend está rodando.</div>`;
@@ -258,7 +258,7 @@ const modalTableBody = document.getElementById('modalTableBody');
 
 if (closeModalBtn) {
     closeModalBtn.addEventListener('click', () => {
-        if(statsModal) statsModal.classList.add('hidden');
+        if (statsModal) statsModal.classList.add('hidden');
     });
 }
 
@@ -292,12 +292,12 @@ if (closeAddLinkBtn) {
 }
 
 async function openStatsModal(shortId) {
-    if(!statsModal) return;
+    if (!statsModal) return;
     statsModal.classList.remove('hidden');
     modalLoading.classList.remove('hidden');
     modalData.classList.add('hidden');
     modalTableBody.innerHTML = '';
-    
+
     try {
         const token = await auth.currentUser.getIdToken();
         const response = await fetch(`${API_BASE_URL}/api/stats/${shortId}`, {
@@ -305,13 +305,13 @@ async function openStatsModal(shortId) {
                 'Authorization': `Bearer ${token}`
             }
         });
-        
+
         const data = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(data.error || 'Erro ao carregar estatísticas detalhadas');
         }
-        
+
         if (data.views.length === 0) {
             modalTableBody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--text-muted); padding: 1rem;">Nenhuma visualização detalhada rastreada ainda.</td></tr>';
         } else {
@@ -326,10 +326,10 @@ async function openStatsModal(shortId) {
                 modalTableBody.appendChild(tr);
             });
         }
-        
+
         modalLoading.classList.add('hidden');
         modalData.classList.remove('hidden');
-        
+
     } catch (error) {
         modalLoading.classList.add('hidden');
         modalData.classList.remove('hidden');
