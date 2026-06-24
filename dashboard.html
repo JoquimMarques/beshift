@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel - Beshift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="display: none;" id="dashboardBody"> <!-- Hidden until auth is checked -->
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <header>
+        <div class="logo">beshift</div>
+        <div class="nav-links">
+            <span id="userEmailDisplay" style="color: var(--text-muted); margin-right: 1rem; font-size: 0.9rem;"></span>
+            <button id="logoutBtn">Sair</button>
+        </div>
+    </header>
+
+    <main class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>Painel de Links</h1>
+            <p style="color: var(--text-muted);">Crie novos links curtos e acompanhe o desempenho deles.</p>
+        </div>
+
+        <div class="glass-panel">
+            <!-- Botão Flutuante (FAB) -->
+        <button id="fabAddLink" class="fab-btn" title="Encurtar Novo Link">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 5V19M5 12H19" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+
+        <!-- Modal de Adicionar Link -->
+        <div id="addLinkModal" class="modal hidden">
+            <div class="modal-content glass-panel" style="padding: 2.5rem;">
+                <span class="close-btn" id="closeAddLinkBtn">&times;</span>
+                <h2 style="margin-bottom: 1.5rem; font-size: 1.8rem;">Novo Link Curto 🚀</h2>
+                <form id="shortenForm">
+                    <div class="input-group">
+                        <label for="originalUrl">URL de Destino (Looonga)</label>
+                        <input type="url" id="originalUrl" placeholder="https://exemplo.com/pagina-muito-longa" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="customAlias">Apelido (Opcional)</label>
+                        <input type="text" id="customAlias" placeholder="meu-link-top">
+                    </div>
+                    <button type="submit" class="btn-primary" id="shortenBtn" style="width: 100%; padding: 1rem; font-size: 1.1rem; margin-top: 1rem; border-radius: 12px;">Encurtar URL</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Lista de Links (Cards) -->
+        <div class="stats-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h2 style="font-size: 1.8rem; margin: 0;">Seus Links</h2>
+            </div>
+            
+            <div class="links-grid" id="linksGrid">
+                <!-- Conteúdo gerado pelo JS -->
+                <div style="text-align: center; padding: 3rem; width: 100%; grid-column: 1 / -1;">
+                    <span class="loading"></span> Carregando...
+                </div>
+            </div>
+        </div>
+        </div>
+    </main>
+
+    <div id="notification"></div>
+
+    <!-- Modal de Estatísticas -->
+    <div id="statsModal" class="modal hidden">
+        <div class="modal-content glass-panel" style="padding: 2rem;">
+            <span class="close-btn" id="closeModalBtn">&times;</span>
+            <h2 id="modalTitle" style="margin-bottom: 1.5rem;">Visualizações Detalhadas</h2>
+            <div id="modalLoading" style="text-align: center; padding: 2rem;">
+                <span class="loading"></span>
+            </div>
+            <div id="modalData" class="hidden">
+                <div class="stats-table-wrapper" style="max-height: 400px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Data e Hora</th>
+                                <th>País</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/firebase-config.js"></script>
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
