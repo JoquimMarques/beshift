@@ -208,6 +208,9 @@ async function fetchStats(user) {
                         <button class="btn-icon stats btn-stats" data-id="${link.shortId}" title="Estatísticas">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path></svg>
                         </button>
+                        <button class="btn-icon delete btn-delete" data-id="${link.shortId}" title="Eliminar">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                        </button>
                     </div>
                 </div>
             `;
@@ -238,6 +241,33 @@ async function fetchStats(user) {
             btn.addEventListener('click', (e) => {
                 const shortId = e.currentTarget.getAttribute('data-id');
                 openStatsModal(shortId);
+            });
+        });
+
+        // Adicionar eventos de eliminar
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const shortId = e.currentTarget.getAttribute('data-id');
+                if (confirm('Tem a certeza que deseja eliminar este link? Esta ação não pode ser desfeita.')) {
+                    try {
+                        const token = await auth.currentUser.getIdToken();
+                        const response = await fetch(`${API_BASE_URL}/api/links/${shortId}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Falha ao eliminar');
+                        }
+                        
+                        showNotification('Link eliminado com sucesso!');
+                        fetchStats(auth.currentUser); // Recarrega a lista
+                    } catch (error) {
+                        showNotification('Erro ao eliminar link', 'error');
+                    }
+                }
             });
         });
 

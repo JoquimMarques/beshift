@@ -510,6 +510,17 @@ td {
   background: rgba(139, 92, 246, 0.2);
 }
 
+.btn-icon.delete {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #FCA5A5;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.btn-icon.delete:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #EF4444;
+}
+
 /* Floating Action Button */
 .fab-btn {
   position: fixed;

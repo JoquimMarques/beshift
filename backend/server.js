@@ -160,6 +160,35 @@ app.post('/api/shorten', authenticate, async (req, res) => {
   }
 });
 
+// API: Endpoint para Eliminar um Link
+app.delete('/api/links/:shortId', authenticate, async (req, res) => {
+  try {
+    const { shortId } = req.params;
+    const linkRef = db.collection('links').doc(shortId);
+    const linkDoc = await linkRef.get();
+
+    if (!linkDoc.exists || linkDoc.data().userId !== req.user.uid) {
+        return res.status(404).json({ error: 'Link não encontrado ou não autorizado' });
+    }
+
+    // Opcional: deletar também a sub-coleção 'views' para poupar espaço
+    const viewsSnapshot = await linkRef.collection('views').get();
+    const batch = db.batch();
+    viewsSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    // Deletar o próprio link
+    batch.delete(linkRef);
+    await batch.commit();
+
+    res.json({ message: 'Link eliminado com sucesso' });
+  } catch (error) {
+    console.error("Erro ao eliminar link:", error);
+    res.status(500).json({ error: 'Erro no Servidor ao eliminar' });
+  }
+});
+
 // API: Endpoint para Detalhes de um Link Específico
 app.get('/api/stats/:shortId', authenticate, async (req, res) => {
   try {
