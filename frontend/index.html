@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beshift - Encurtador de URL Premium</title>
+    <meta name="description" content="Encurte seus links e acompanhe as visualizações com facilidade através do Beshift.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    
+    <!-- Firebase SDK (Modular) -->
+    <script type="module" src="js/firebase-config.js"></script>
+    <script type="module" src="js/app.js"></script>
+</head>
+<body>
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <header>
+        <div class="logo">beshift</div>
+        <div class="nav-links">
+            <button id="navLoginBtn" class="hidden">Entrar</button>
+            <button id="navDashboardBtn" class="btn-primary hidden">Painel</button>
+        </div>
+    </header>
+
+    <main class="login-container">
+        <!-- Landing Content -->
+        <div class="glass-panel" style="text-align: center; max-width: 600px;">
+            <h1 style="font-size: 3rem; margin-bottom: 1rem;">Bem-vindo ao <span style="color: var(--secondary)">beshift</span></h1>
+            <p style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem; line-height: 1.6;">
+                O encurtador de URL premium que te dá controle total e informações sobre seus links. 
+                Faça login para começar a rastrear o seu sucesso.
+            </p>
+            <button id="ctaLoginBtn" class="btn-primary" style="font-size: 1.2rem; padding: 1rem 2.5rem;" onclick="window.location.href='login.html'">Ir para Login</button>
+        </div>
+    </main>
+
+    <div id="notification"></div>
+</body>
+</html>
