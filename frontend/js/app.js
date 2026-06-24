@@ -144,6 +144,8 @@ if (shortenForm) {
             showNotification('URL encurtada com sucesso!');
             document.getElementById('originalUrl').value = '';
             document.getElementById('customAlias').value = '';
+            const addLinkModal = document.getElementById('addLinkModal');
+            if(addLinkModal) addLinkModal.classList.add('hidden');
             fetchStats(auth.currentUser); 
         } catch (error) {
             showNotification(error.message, 'error');
@@ -155,7 +157,9 @@ if (shortenForm) {
 }
 
 async function fetchStats(user) {
-    const tbody = document.getElementById('linksTableBody');
+    const linksGrid = document.getElementById('linksGrid');
+    if(!linksGrid) return; // Se não estivermos no dashboard
+    
     try {
         const token = await user.getIdToken();
         const response = await fetch(`${API_BASE_URL}/api/stats`, {
@@ -170,48 +174,61 @@ async function fetchStats(user) {
             throw new Error(data.error || 'Falha ao buscar estatísticas');
         }
         
-        tbody.innerHTML = '';
+        linksGrid.innerHTML = '';
         
         if (data.links.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Nenhum link encontrado. Encurte seu primeiro link acima!</td></tr>';
+            linksGrid.innerHTML = '<div style="text-align: center; padding: 3rem; width: 100%; grid-column: 1 / -1; color: var(--text-muted);">Nenhum link encontrado. Clique no botão de + para criar!</div>';
             return;
         }
         
         data.links.forEach(link => {
             const shortUrl = `${API_BASE_URL}/${link.shortId}`;
-            const tr = document.createElement('tr');
-            
             const date = new Date(link.createdAt).toLocaleDateString('pt-BR');
             
-            tr.innerHTML = `
-                <td>
-                    <a href="${shortUrl}" target="_blank" class="short-url-link">${link.shortId}</a>
-                </td>
-                <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <a href="${link.originalUrl}" target="_blank" style="color: var(--text-muted); text-decoration: none;" title="${link.originalUrl}">${link.originalUrl}</a>
-                </td>
-                <td><span class="clicks-badge">${link.clicks}</span></td>
-                <td style="color: var(--text-muted); font-size: 0.9rem;">${date}</td>
-                <td style="display: flex; gap: 0.5rem;">
-                    <button class="btn-copy" data-url="${shortUrl}" style="background: transparent; border: 1px solid var(--glass-border); color: var(--text-main); padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; transition: background 0.3s;">Copiar</button>
-                    <button class="btn-stats" data-id="${link.shortId}" style="background: rgba(139, 92, 246, 0.2); border: 1px solid var(--glass-border); color: #C4B5FD; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; transition: background 0.3s;">Estatísticas</button>
-                </td>
+            const card = document.createElement('div');
+            card.className = 'link-card';
+            
+            card.innerHTML = `
+                <div class="card-header">
+                    <span class="card-date">${date}</span>
+                    <span class="clicks" title="Visualizações">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 4C5 4 1 12 1 12C1 12 5 20 12 20C19 20 23 12 23 12C23 12 19 4 12 4ZM12 17C9.23858 17 7 14.7614 7 12C7 9.2386 9.23858 7 12 7C14.7614 7 17 9.2386 17 12C17 14.7614 14.7614 17 12 17ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9Z" fill="currentColor"/>
+                        </svg>
+                        ${link.clicks}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <a href="${shortUrl}" target="_blank" class="short-url">beshift.com/${link.shortId}</a>
+                    <a href="${link.originalUrl}" target="_blank" class="original-url" title="${link.originalUrl}">${link.originalUrl}</a>
+                </div>
+                <div class="card-footer">
+                    <div class="card-actions">
+                        <button class="btn-icon btn-copy" data-url="${shortUrl}" title="Copiar URL">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </button>
+                        <button class="btn-icon stats btn-stats" data-id="${link.shortId}" title="Estatísticas">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path></svg>
+                        </button>
+                    </div>
+                </div>
             `;
-            tbody.appendChild(tr);
+            linksGrid.appendChild(card);
         });
         
         // Adicionar eventos de copiar
         document.querySelectorAll('.btn-copy').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const url = e.target.getAttribute('data-url');
+                const btnElement = e.currentTarget;
+                const url = btnElement.getAttribute('data-url');
                 navigator.clipboard.writeText(url).then(() => {
-                    const originalText = e.target.textContent;
-                    e.target.textContent = 'Copiado!';
-                    e.target.style.background = 'rgba(16, 185, 129, 0.2)'; // Fundo verde
+                    const originalHTML = btnElement.innerHTML;
+                    btnElement.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                    btnElement.style.color = '#10B981';
                     
                     setTimeout(() => {
-                        e.target.textContent = originalText;
-                        e.target.style.background = 'transparent';
+                        btnElement.innerHTML = originalHTML;
+                        btnElement.style.color = '';
                     }, 2000);
                     showNotification('Copiado para a área de transferência!');
                 });
@@ -221,14 +238,14 @@ async function fetchStats(user) {
         // Adicionar eventos de estatísticas
         document.querySelectorAll('.btn-stats').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const shortId = e.target.getAttribute('data-id');
+                const shortId = e.currentTarget.getAttribute('data-id');
                 openStatsModal(shortId);
             });
         });
         
     } catch (error) {
         console.error("Erro ao buscar estatísticas:", error);
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #EF4444; padding: 2rem;">Erro ao carregar os links: Verifique se o backend está rodando.</td></tr>`;
+        linksGrid.innerHTML = `<div style="text-align: center; color: #EF4444; padding: 2rem; grid-column: 1 / -1;">Erro ao carregar os links: Verifique se o backend está rodando.</div>`;
     }
 }
 
@@ -252,7 +269,29 @@ window.addEventListener('click', (e) => {
     if (e.target === statsModal) {
         statsModal.classList.add('hidden');
     }
+    const addLinkModal = document.getElementById('addLinkModal');
+    if (e.target === addLinkModal) {
+        addLinkModal.classList.add('hidden');
+    }
 });
+
+// Lógica do Modal FAB
+const fabAddLink = document.getElementById('fabAddLink');
+const addLinkModal = document.getElementById('addLinkModal');
+const closeAddLinkBtn = document.getElementById('closeAddLinkBtn');
+
+if (fabAddLink) {
+    fabAddLink.addEventListener('click', () => {
+        addLinkModal.classList.remove('hidden');
+        document.getElementById('originalUrl').focus();
+    });
+}
+
+if (closeAddLinkBtn) {
+    closeAddLinkBtn.addEventListener('click', () => {
+        addLinkModal.classList.add('hidden');
+    });
+}
 
 async function openStatsModal(shortId) {
     if(!statsModal) return;

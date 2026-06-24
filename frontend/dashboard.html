@@ -28,39 +28,45 @@
         </div>
 
         <div class="glass-panel">
-            <form id="shortenForm" class="shortener-box">
-                <div class="input-group">
-                    <label for="originalUrl">URL de Destino</label>
-                    <input type="url" id="originalUrl" required placeholder="https://exemplo.com/caminho-muito-longo-da-url">
-                </div>
-                <div class="input-group" style="flex: 0.5;">
-                    <label for="customAlias">Apelido (Opcional)</label>
-                    <input type="text" id="customAlias" placeholder="minha-campanha">
-                </div>
-                <button type="submit" class="btn-primary" id="shortenBtn">Encurtar</button>
-            </form>
+            <!-- Botão Flutuante (FAB) -->
+        <button id="fabAddLink" class="fab-btn" title="Encurtar Novo Link">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 5V19M5 12H19" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
 
-            <div class="stats-container">
-                <h2>Seus Links</h2>
-                <div class="stats-table-wrapper">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>URL Curta</th>
-                                <th>URL Original</th>
-                                <th>Visualizações</th>
-                                <th>Criado em</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="linksTableBody">
-                            <tr>
-                                <td colspan="5" style="text-align: center; padding: 2rem;">Carregando seus links...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+        <!-- Modal de Adicionar Link -->
+        <div id="addLinkModal" class="modal hidden">
+            <div class="modal-content glass-panel" style="padding: 2.5rem;">
+                <span class="close-btn" id="closeAddLinkBtn">&times;</span>
+                <h2 style="margin-bottom: 1.5rem; font-size: 1.8rem;">Novo Link Curto 🚀</h2>
+                <form id="shortenForm">
+                    <div class="input-group">
+                        <label for="originalUrl">URL de Destino (Looonga)</label>
+                        <input type="url" id="originalUrl" placeholder="https://exemplo.com/pagina-muito-longa" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="customAlias">Apelido (Opcional)</label>
+                        <input type="text" id="customAlias" placeholder="meu-link-top">
+                    </div>
+                    <button type="submit" class="btn-primary" id="shortenBtn" style="width: 100%; padding: 1rem; font-size: 1.1rem; margin-top: 1rem; border-radius: 12px;">Encurtar URL</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Lista de Links (Cards) -->
+        <div class="stats-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h2 style="font-size: 1.8rem; margin: 0;">Seus Links</h2>
+            </div>
+            
+            <div class="links-grid" id="linksGrid">
+                <!-- Conteúdo gerado pelo JS -->
+                <div style="text-align: center; padding: 3rem; width: 100%; grid-column: 1 / -1;">
+                    <span class="loading"></span> Carregando...
                 </div>
             </div>
+        </div>
         </div>
     </main>
 
