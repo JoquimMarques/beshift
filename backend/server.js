@@ -32,10 +32,16 @@ try {
 
 const db = admin.firestore ? admin.firestore() : null;
 
-// Middleware de Autenticação
+// Middleware de Autenticação (Firebase OU sessão NeuroQR sem conta)
 const authenticate = async (req, res, next) => {
   if (!db) return res.status(500).json({ error: 'Banco de dados não inicializado' });
-  
+
+  const sessionId = req.headers['x-session-id']?.trim();
+  if (sessionId && sessionId.length >= 8) {
+    req.user = { uid: `neuroqr_${sessionId}` };
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Não autorizado: Nenhum token fornecido' });
