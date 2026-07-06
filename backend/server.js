@@ -255,6 +255,11 @@ app.get('/api/stats', authenticate, async (req, res) => {
   }
 });
 
+// Endpoint de Health Check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK' });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Backend do Beshift rodando na porta ${PORT}`);
