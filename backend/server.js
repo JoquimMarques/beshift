@@ -256,6 +256,10 @@ app.get('/api/stats', authenticate, async (req, res) => {
     res.json({ links });
   } catch (error) {
     console.error("Erro ao buscar estatísticas:", error);
+    res.status(500).json({ error: 'Erro no Servidor' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Backend do Beshift rodando na porta ${PORT}`);
