@@ -56,6 +56,11 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+// Endpoint de Health Check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK' });
+});
+
 // Endpoint de Redirecionamento
 app.get('/:shortId', async (req, res) => {
   if (!db) return res.status(500).send('Banco de dados não inicializado');
@@ -251,15 +256,6 @@ app.get('/api/stats', authenticate, async (req, res) => {
     res.json({ links });
   } catch (error) {
     console.error("Erro ao buscar estatísticas:", error);
-    res.status(500).json({ error: 'Erro no Servidor' });
-  }
-});
-
-// Endpoint de Health Check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK' });
-});
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Backend do Beshift rodando na porta ${PORT}`);
