@@ -40,117 +40,42 @@ try {
 const db = admin.firestore ? admin.firestore() : null;
 
 // Middleware de Autenticação (Firebase OU sessão NeuroQR sem conta)
+//
+// - Com sessão Firebase o frontend envia "Authorization: Bearer <ID token>", que é
+//   verificado. Os links dessas contas foram gravados com userId "neuroqr_<uid>"
+//   (o frontend antigo enviava o uid como X-Session-Id), por isso mantemos esse id
+//   e aceitamos também o uid "nu" em registos mais antigos.
+// - Sem sessão, a app envia um X-Session-Id gerado por ela (UUID). Só esse formato é
+//   aceite: um uid do Firebase neste cabeçalho era uma forma de personificar outra conta.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const authenticate = async (req, res, next) => {
   if (!db) return res.status(500).json({ error: 'Banco de dados não inicializado' });
 
-  const sessionId = req.headers['x-session-id']?.trim();
-  if (sessionId && sessionId.length >= 8) {
-    req.user = { uid: `neuroqr_${sessionId}` };
+  const authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded = await admin.auth().verifyIdToken(authHeader.slice(7));
+      const legacyId = `neuroqr_${decoded.uid}`;
+      req.user = { ...decoded, firebaseUid: decoded.uid, uid: legacyId, ownerIds: [legacyId, decoded.uid] };
+      return next();
+    } catch (error) {
+      return res.status(401).json({ error: 'Não autorizado: Token inválido' });
+    }
+  }
+
+  const sessionId = (req.headers['x-session-id'] || '').trim();
+  if (UUID_RE.test(sessionId)) {
+    const uid = `neuroqr_${sessionId}`;
+    req.user = { uid, ownerIds: [uid] };
     return next();
   }
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Não autorizado: Nenhum token fornecido' });
-  }
-  const idToken = authHeader.split('Bearer ')[1];
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Não autorizado: Token inválido' });
-  }
+  return res.status(401).json({ error: 'Não autorizado: inicie sessão' });
 };
 
-// ---------------------------------------------------------------------------
-// Geolocalização e filtragem de bots
-// ---------------------------------------------------------------------------
-
-// Bots de pré-visualização (WhatsApp, Facebook, Telegram, etc.) e crawlers.
-// Estes pedidos recebem o redirect normalmente, mas não contam como clique.
-const BOT_UA_REGEX = /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|linkedinbot|slackbot|discordbot|skypeuripreview|pinterest|redditbot|applebot|googlebot|bingbot|yandex|duckduckbot|baiduspider|petalbot|embedly|quora link preview|outbrain|vkshare|w3c_validator|snapchat|iframely|curl\/|wget\/|python-requests|go-http-client|headlesschrome|bot\b|crawler|spider|preview/i;
-
-const isBotRequest = (req) => {
-  if (req.method === 'HEAD') return true;
-  const ua = req.headers['user-agent'];
-  if (!ua) return true; // browsers reais enviam sempre User-Agent
-  return BOT_UA_REGEX.test(ua);
-};
-
-const isPrivateIp = (ip) =>
-  /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|fc|fd|fe80)/i.test(ip);
-
-// Cache em memória para não repetir lookups externos (ip-api.com: 45 req/min)
-const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const GEO_CACHE_MAX = 5000;
-const geoCache = new Map();
-
-const cacheGet = (ip) => {
-  const entry = geoCache.get(ip);
-  if (!entry) return undefined;
-  if (Date.now() - entry.ts > entry.ttl) { geoCache.delete(ip); return undefined; }
-  return entry.code;
-};
-const cacheSet = (ip, code, ttl = GEO_CACHE_TTL_MS) => {
-  if (geoCache.size >= GEO_CACHE_MAX) geoCache.delete(geoCache.keys().next().value);
-  geoCache.set(ip, { code, ts: Date.now(), ttl });
-};
-
-// Fallback externo para gamas que a base local do geoip-lite não cobre
-// (ex.: blocos AFRINIC recentes como Finstar 102.215.182.x em Angola).
-const lookupCountryExternal = async (ip) => {
-  if (typeof fetch !== 'function') return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2000);
-  try {
-    const resp = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,countryCode`, {
-      signal: controller.signal
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    return data && data.status === 'success' && data.countryCode ? data.countryCode : null;
-  } catch (err) {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
-// Devolve o código ISO-3166 (ex.: 'AO') ou null
-const lookupCountryCode = async (ip) => {
-  if (!ip || isPrivateIp(ip)) return null;
-
-  const cached = cacheGet(ip);
-  if (cached !== undefined) return cached;
-
-  const geo = geoip.lookup(ip);
-  if (geo && geo.country) {
-    cacheSet(ip, geo.country);
-    return geo.country;
-  }
-
-  const external = await lookupCountryExternal(ip);
-  // Resultado nulo fica em cache por menos tempo para permitir nova tentativa
-  cacheSet(ip, external, external ? GEO_CACHE_TTL_MS : 60 * 60 * 1000);
-  return external;
-};
-
-// Nome do país em português + bandeira, a partir do código ISO (ex.: 'AO' -> 'Angola 🇦🇴')
-let regionNames = null;
-try { regionNames = new Intl.DisplayNames(['pt'], { type: 'region' }); } catch (e) { regionNames = null; }
-
-const flagEmoji = (code) =>
-  code.toUpperCase().replace(/./g, (c) => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65));
-
-const formatCountry = (code) => {
-  if (!code || !/^[A-Z]{2}$/i.test(code)) return 'Desconhecido';
-  const upper = code.toUpperCase();
-  let name = null;
-  try { name = regionNames ? regionNames.of(upper) : null; } catch (e) { name = null; }
-  if (!name || name === upper) name = upper;
-  return `${name} ${flagEmoji(upper)}`;
-};
+// O link pertence ao utilizador do pedido?
+const ownsLink = (req, linkData) => !!linkData && req.user.ownerIds.includes(linkData.userId);
 
 // Endpoint de Health Check
 app.get('/health', (req, res) => {
@@ -274,7 +199,7 @@ app.delete('/api/links/:shortId', authenticate, async (req, res) => {
     const linkRef = db.collection('links').doc(shortId);
     const linkDoc = await linkRef.get();
 
-    if (!linkDoc.exists || linkDoc.data().userId !== req.user.uid) {
+    if (!linkDoc.exists || !ownsLink(req, linkDoc.data())) {
         return res.status(404).json({ error: 'Link não encontrado ou não autorizado' });
     }
 
@@ -314,7 +239,7 @@ app.patch('/api/links/:shortId', authenticate, async (req, res) => {
     const linkRef = db.collection('links').doc(shortId);
     const linkDoc = await linkRef.get();
 
-    if (!linkDoc.exists || linkDoc.data().userId !== req.user.uid) {
+    if (!linkDoc.exists || !ownsLink(req, linkDoc.data())) {
       return res.status(404).json({ error: 'Link não encontrado ou não autorizado' });
     }
 
@@ -337,7 +262,7 @@ app.get('/api/stats/:shortId', authenticate, async (req, res) => {
     const linkRef = db.collection('links').doc(shortId);
     const linkDoc = await linkRef.get();
 
-    if (!linkDoc.exists || linkDoc.data().userId !== req.user.uid) {
+    if (!linkDoc.exists || !ownsLink(req, linkDoc.data())) {
         return res.status(404).json({ error: 'Link não encontrado' });
     }
 
@@ -367,7 +292,7 @@ app.get('/api/stats/:shortId', authenticate, async (req, res) => {
 app.get('/api/stats', authenticate, async (req, res) => {
   try {
     const linksSnapshot = await db.collection('links')
-                                  .where('userId', '==', req.user.uid)
+                                  .where('userId', 'in', req.user.ownerIds)
                                   .get();
     
     const links = [];
@@ -505,7 +430,8 @@ app.post('/api/billing/checkout', requireFirebaseUser, async (req, res) => {
 app.get('/api/billing/config', (req, res) => {
   res.json({
     stripeKey: !!process.env.STRIPE_SECRET_KEY,
-    stripeKeyMode: process.env.STRIPE_SECRET_KEY ? (process.env.STRIPE_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'test') : null,
+    stripeKeyMode: process.env.STRIPE_SECRET_KEY ? (/^(sk|rk)_live_/.test(process.env.STRIPE_SECRET_KEY) ? 'live' : 'test') : null,
+    stripeKeyKind: process.env.STRIPE_SECRET_KEY ? (process.env.STRIPE_SECRET_KEY.startsWith('rk_') ? 'restricted' : 'standard') : null,
     webhookSecret: !!STRIPE_WEBHOOK_SECRET,
     priceId: !!STRIPE_PRICE_LIFETIME,
     priceIdLooksValid: !!STRIPE_PRICE_LIFETIME && /^price_/.test(STRIPE_PRICE_LIFETIME),
