@@ -3,11 +3,17 @@ const cors = require('cors');
 const { nanoid } = require('nanoid');
 const admin = require('firebase-admin');
 const geoip = require('geoip-lite');
+const Stripe = require('stripe');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// O webhook do Stripe valida a assinatura sobre o corpo em bruto, por isso
+// nao pode passar pelo express.json(). Todas as outras rotas continuam em JSON.
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/stripe/webhook') return next();
+  return express.json()(req, res, next);
+});
 
 // Inicializar o Firebase Admin
 let serviceAccount;
@@ -289,6 +295,40 @@ app.delete('/api/links/:shortId', authenticate, async (req, res) => {
   }
 });
 
+// API: Alterar o destino de um link (QR dinâmico: o código impresso continua igual)
+app.patch('/api/links/:shortId', authenticate, async (req, res) => {
+  const { shortId } = req.params;
+  const { originalUrl } = req.body || {};
+
+  if (!originalUrl) {
+    return res.status(400).json({ error: 'A URL original é obrigatória' });
+  }
+  try {
+    new URL(originalUrl);
+  } catch (_) {
+    return res.status(400).json({ error: 'Formato de URL inválido. Por favor, inclua http:// ou https://' });
+  }
+
+  try {
+    const linkRef = db.collection('links').doc(shortId);
+    const linkDoc = await linkRef.get();
+
+    if (!linkDoc.exists || linkDoc.data().userId !== req.user.uid) {
+      return res.status(404).json({ error: 'Link não encontrado ou não autorizado' });
+    }
+
+    await linkRef.update({
+      originalUrl,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.json({ shortId, originalUrl, message: 'Destino atualizado com sucesso' });
+  } catch (error) {
+    console.error("Erro ao atualizar link:", error);
+    res.status(500).json({ error: 'Erro no Servidor ao atualizar' });
+  }
+});
+
 // API: Endpoint para Detalhes de um Link Específico
 app.get('/api/stats/:shortId', authenticate, async (req, res) => {
   try {
@@ -347,6 +387,181 @@ app.get('/api/stats', authenticate, async (req, res) => {
   } catch (error) {
     console.error("Erro ao buscar estatísticas:", error);
     res.status(500).json({ error: 'Erro no Servidor' });
+  }
+});
+
+/* =============================================================================
+   PAGAMENTOS (Stripe) — plano Lifetime, pagamento unico
+   Variaveis de ambiente (Render):
+     STRIPE_SECRET_KEY      sk_live_... / sk_test_...
+     STRIPE_WEBHOOK_SECRET  whsec_...   (do endpoint criado no painel do Stripe)
+     STRIPE_PRICE_LIFETIME  price_...   (preco unico de $1,99)
+     PUBLIC_SITE_URL        https://www.neuroqr.online
+   Firestore:
+     users/{uid}            { plan: 'free' | 'lifetime', planSince, stripe* }
+     billing_events/{id}    eventos ja processados (idempotencia do webhook)
+   ============================================================================= */
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+const STRIPE_PRICE_LIFETIME = process.env.STRIPE_PRICE_LIFETIME || null;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || null;
+const PUBLIC_SITE_URL = (process.env.PUBLIC_SITE_URL || 'https://www.neuroqr.online').replace(/\/$/, '');
+
+if (!stripe) console.warn('Stripe desativado: defina STRIPE_SECRET_KEY para ativar os pagamentos.');
+
+// Para pagamentos exigimos SEMPRE um ID token do Firebase (nunca o X-Session-Id),
+// para ninguem conseguir comprar/ativar em nome de outro utilizador.
+const requireFirebaseUser = async (req, res, next) => {
+  if (!db) return res.status(500).json({ error: 'Banco de dados nao inicializado' });
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Inicie sessao para continuar' });
+  }
+  try {
+    req.user = await admin.auth().verifyIdToken(authHeader.slice(7));
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Sessao invalida. Inicie sessao outra vez.' });
+  }
+};
+
+function serializePlan(uid, data = {}) {
+  const since = data.planSince && typeof data.planSince.toDate === 'function' ? data.planSince.toDate().toISOString() : null;
+  return {
+    uid,
+    plan: data.plan === 'lifetime' ? 'lifetime' : 'free',
+    planSince: since,
+    stripeCustomerId: data.stripeCustomerId || null,
+  };
+}
+
+async function getPlan(uid) {
+  const snap = await db.collection('users').doc(uid).get();
+  return serializePlan(uid, snap.exists ? snap.data() : {});
+}
+
+async function grantLifetime(session, source) {
+  const uid = session.client_reference_id || (session.metadata && session.metadata.uid);
+  if (!uid) {
+    console.warn('Checkout sem uid associado:', session.id);
+    return null;
+  }
+  const ref = db.collection('users').doc(uid);
+  await ref.set({
+    plan: 'lifetime',
+    planSince: admin.firestore.FieldValue.serverTimestamp(),
+    stripeCustomerId: session.customer || null,
+    stripeCheckoutSessionId: session.id,
+    stripePaymentIntentId: session.payment_intent || null,
+    amountTotal: session.amount_total || null,
+    currency: session.currency || null,
+    billingEmail: (session.customer_details && session.customer_details.email) || session.customer_email || null,
+    planSource: source,
+  }, { merge: true });
+  const snap = await ref.get();
+  return serializePlan(uid, snap.data());
+}
+
+// Plano do utilizador autenticado
+app.get('/api/billing/me', requireFirebaseUser, async (req, res) => {
+  try {
+    res.json(await getPlan(req.user.uid));
+  } catch (error) {
+    console.error('Erro ao ler plano:', error);
+    res.status(500).json({ error: 'Erro ao ler o plano' });
+  }
+});
+
+// Cria a sessao de Checkout (pagamento unico) e devolve o URL do Stripe
+app.post('/api/billing/checkout', requireFirebaseUser, async (req, res) => {
+  if (!stripe || !STRIPE_PRICE_LIFETIME) {
+    return res.status(503).json({ error: 'Os pagamentos ainda nao estao configurados no servidor.' });
+  }
+  try {
+    const current = await getPlan(req.user.uid);
+    if (current.plan === 'lifetime') {
+      return res.status(409).json({ error: 'Esta conta ja tem o plano Lifetime.', plan: current });
+    }
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{ price: STRIPE_PRICE_LIFETIME, quantity: 1 }],
+      client_reference_id: req.user.uid,
+      customer_email: req.user.email || undefined,
+      metadata: { uid: req.user.uid, plan: 'lifetime' },
+      allow_promotion_codes: true,
+      success_url: `${PUBLIC_SITE_URL}/upgrade?status=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${PUBLIC_SITE_URL}/upgrade?status=cancel`,
+    });
+    res.json({ id: session.id, url: session.url });
+  } catch (error) {
+    console.error('Erro ao criar checkout:', error);
+    res.status(500).json({ error: 'Nao foi possivel iniciar o pagamento.' });
+  }
+});
+
+// Confirmacao directa ao voltar do Stripe (nao depende do webhook ter chegado primeiro)
+app.get('/api/billing/confirm', requireFirebaseUser, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Os pagamentos ainda nao estao configurados no servidor.' });
+  const sessionId = req.query.session_id;
+  if (!sessionId) return res.status(400).json({ error: 'session_id em falta' });
+  try {
+    const session = await stripe.checkout.sessions.retrieve(String(sessionId));
+    const uid = session.client_reference_id || (session.metadata && session.metadata.uid);
+    if (uid !== req.user.uid) return res.status(403).json({ error: 'Esta sessao de pagamento nao pertence a esta conta.' });
+    if (session.payment_status !== 'paid') {
+      return res.json({ ...(await getPlan(req.user.uid)), pending: true });
+    }
+    const plan = await grantLifetime(session, 'confirm');
+    res.json(plan);
+  } catch (error) {
+    console.error('Erro ao confirmar checkout:', error);
+    res.status(500).json({ error: 'Nao foi possivel confirmar o pagamento.' });
+  }
+});
+
+// Webhook do Stripe (corpo em bruto; ver middleware no topo)
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.status(503).send('Stripe nao configurado');
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.warn('Assinatura do webhook invalida:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    // Idempotencia: o Stripe pode reenviar o mesmo evento
+    const eventRef = db.collection('billing_events').doc(event.id);
+    if ((await eventRef.get()).exists) return res.json({ received: true, duplicate: true });
+
+    switch (event.type) {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded': {
+        const session = event.data.object;
+        if (session.payment_status === 'paid') await grantLifetime(session, 'webhook');
+        break;
+      }
+      case 'charge.refunded': {
+        // Reembolso total: volta ao plano gratis
+        const charge = event.data.object;
+        if (charge.refunded && charge.payment_intent) {
+          const q = await db.collection('users').where('stripePaymentIntentId', '==', charge.payment_intent).limit(1).get();
+          if (!q.empty) {
+            await q.docs[0].ref.set({ plan: 'free', refundedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    await eventRef.set({ type: event.type, livemode: event.livemode, at: admin.firestore.FieldValue.serverTimestamp() });
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Erro ao processar webhook:', error);
+    // 500 faz o Stripe tentar outra vez mais tarde
+    res.status(500).send('Erro interno');
   }
 });
 
