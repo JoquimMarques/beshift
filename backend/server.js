@@ -494,8 +494,22 @@ app.post('/api/billing/checkout', requireFirebaseUser, async (req, res) => {
     res.json({ id: session.id, url: session.url });
   } catch (error) {
     console.error('Erro ao criar checkout:', error);
-    res.status(500).json({ error: 'Nao foi possivel iniciar o pagamento.' });
+    // A mensagem do Stripe (ex.: "No such price") ajuda a diagnosticar e nao expoe segredos
+    const detail = error && error.message ? ` (${error.type || 'Stripe'}: ${error.message})` : '';
+    res.status(500).json({ error: `Nao foi possivel iniciar o pagamento.${detail}` });
   }
+});
+
+// Diagnostico (publico, so devolve sim/nao): confirma que variaveis o servidor ve
+app.get('/api/billing/config', (req, res) => {
+  res.json({
+    stripeKey: !!process.env.STRIPE_SECRET_KEY,
+    stripeKeyMode: process.env.STRIPE_SECRET_KEY ? (process.env.STRIPE_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'test') : null,
+    webhookSecret: !!STRIPE_WEBHOOK_SECRET,
+    priceId: !!STRIPE_PRICE_LIFETIME,
+    priceIdLooksValid: !!STRIPE_PRICE_LIFETIME && /^price_/.test(STRIPE_PRICE_LIFETIME),
+    publicSiteUrl: PUBLIC_SITE_URL,
+  });
 });
 
 // Confirmacao directa ao voltar do Stripe (nao depende do webhook ter chegado primeiro)
