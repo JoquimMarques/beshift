@@ -539,7 +539,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
   try {
     event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.warn('Assinatura do webhook invalida:', err.message);
+    console.warn('Assinatura do webhook invalida:', err.message, '| tem header:', !!req.headers['stripe-signature'], '| body e Buffer:', Buffer.isBuffer(req.body));
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -548,17 +548,28 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
     const eventRef = db.collection('billing_events').doc(event.id);
     if ((await eventRef.get()).exists) return res.json({ received: true, duplicate: true });
 
-    switch (event.type) {
+    // Destinos "thin" (Workbench novo): o evento traz so o id do objeto; vamos busca-lo ao Stripe
+    const isThin = typeof event.type === 'string' && event.type.startsWith('v1.');
+    const type = isThin ? event.type.slice(3) : event.type;
+    const loadObject = async () => {
+      if (!isThin) return event.data.object;
+      const related = event.related_object || {};
+      if (type.startsWith('checkout.session.')) return stripe.checkout.sessions.retrieve(related.id);
+      if (type.startsWith('charge.')) return stripe.charges.retrieve(related.id);
+      return null;
+    };
+
+    switch (type) {
       case 'checkout.session.completed':
       case 'checkout.session.async_payment_succeeded': {
-        const session = event.data.object;
-        if (session.payment_status === 'paid') await grantLifetime(session, 'webhook');
+        const session = await loadObject();
+        if (session && session.payment_status === 'paid') await grantLifetime(session, 'webhook');
         break;
       }
       case 'charge.refunded': {
         // Reembolso total: volta ao plano gratis
-        const charge = event.data.object;
-        if (charge.refunded && charge.payment_intent) {
+        const charge = await loadObject();
+        if (charge && charge.refunded && charge.payment_intent) {
           const q = await db.collection('users').where('stripePaymentIntentId', '==', charge.payment_intent).limit(1).get();
           if (!q.empty) {
             await q.docs[0].ref.set({ plan: 'free', refundedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -570,7 +581,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
         break;
     }
 
-    await eventRef.set({ type: event.type, livemode: event.livemode, at: admin.firestore.FieldValue.serverTimestamp() });
+    await eventRef.set({ type: event.type, livemode: event.livemode, thin: isThin, at: admin.firestore.FieldValue.serverTimestamp() });
     res.json({ received: true });
   } catch (error) {
     console.error('Erro ao processar webhook:', error);
