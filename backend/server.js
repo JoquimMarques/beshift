@@ -538,7 +538,13 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
   if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.status(503).send('Stripe nao configurado');
   let event;
   try {
-    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
+    const sig = req.headers['stripe-signature'];
+    // Destinos "thin" (Workbench novo) enviam um v2.core.event: a biblioteca exige o metodo proprio
+    let isV2 = false;
+    try { isV2 = JSON.parse(req.body.toString('utf8')).object === 'v2.core.event'; } catch (_) { isV2 = false; }
+    event = isV2
+      ? stripe.parseEventNotification(req.body, sig, STRIPE_WEBHOOK_SECRET)
+      : stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.warn('Assinatura do webhook invalida:', err.message, '| tem header:', !!req.headers['stripe-signature'], '| body e Buffer:', Buffer.isBuffer(req.body));
     return res.status(400).send(`Webhook Error: ${err.message} | signature header: ${req.headers['stripe-signature'] ? 'yes' : 'no'} | raw body: ${Buffer.isBuffer(req.body) ? 'yes' : 'no'} | path: ${req.originalUrl}`);
