@@ -11,7 +11,8 @@ app.use(cors());
 // O webhook do Stripe valida a assinatura sobre o corpo em bruto, por isso
 // nao pode passar pelo express.json(). Todas as outras rotas continuam em JSON.
 app.use((req, res, next) => {
-  if (req.originalUrl === '/api/stripe/webhook') return next();
+  // tolerante a barra final e a query string (ex.: /api/stripe/webhook/?x=1)
+  if (req.path.replace(/\/+$/, '') === '/api/stripe/webhook') return next();
   return express.json()(req, res, next);
 });
 
@@ -540,7 +541,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
     event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.warn('Assinatura do webhook invalida:', err.message, '| tem header:', !!req.headers['stripe-signature'], '| body e Buffer:', Buffer.isBuffer(req.body));
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message} | signature header: ${req.headers['stripe-signature'] ? 'yes' : 'no'} | raw body: ${Buffer.isBuffer(req.body) ? 'yes' : 'no'} | path: ${req.originalUrl}`);
   }
 
   try {
