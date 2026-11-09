@@ -77,6 +77,95 @@ const authenticate = async (req, res, next) => {
 // O link pertence ao utilizador do pedido?
 const ownsLink = (req, linkData) => !!linkData && req.user.ownerIds.includes(linkData.userId);
 
+// ---------------------------------------------------------------------------
+// Geolocalização e filtragem de bots
+// ---------------------------------------------------------------------------
+
+// Bots de pré-visualização (WhatsApp, Facebook, Telegram, etc.) e crawlers.
+// Estes pedidos recebem o redirect normalmente, mas não contam como clique.
+const BOT_UA_REGEX = /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|linkedinbot|slackbot|discordbot|skypeuripreview|pinterest|redditbot|applebot|googlebot|bingbot|yandex|duckduckbot|baiduspider|petalbot|embedly|quora link preview|outbrain|vkshare|w3c_validator|snapchat|iframely|curl\/|wget\/|python-requests|go-http-client|headlesschrome|bot\b|crawler|spider|preview/i;
+
+const isBotRequest = (req) => {
+  if (req.method === 'HEAD') return true;
+  const ua = req.headers['user-agent'];
+  if (!ua) return true; // browsers reais enviam sempre User-Agent
+  return BOT_UA_REGEX.test(ua);
+};
+
+const isPrivateIp = (ip) =>
+  /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|fc|fd|fe80)/i.test(ip);
+
+// Cache em memória para não repetir lookups externos (ip-api.com: 45 req/min)
+const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const GEO_CACHE_MAX = 5000;
+const geoCache = new Map();
+
+const cacheGet = (ip) => {
+  const entry = geoCache.get(ip);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > entry.ttl) { geoCache.delete(ip); return undefined; }
+  return entry.code;
+};
+const cacheSet = (ip, code, ttl = GEO_CACHE_TTL_MS) => {
+  if (geoCache.size >= GEO_CACHE_MAX) geoCache.delete(geoCache.keys().next().value);
+  geoCache.set(ip, { code, ts: Date.now(), ttl });
+};
+
+// Fallback externo para gamas que a base local do geoip-lite não cobre
+// (ex.: blocos AFRINIC recentes como Finstar 102.215.182.x em Angola).
+const lookupCountryExternal = async (ip) => {
+  if (typeof fetch !== 'function') return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const resp = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,countryCode`, {
+      signal: controller.signal
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data && data.status === 'success' && data.countryCode ? data.countryCode : null;
+  } catch (err) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+// Devolve o código ISO-3166 (ex.: 'AO') ou null
+const lookupCountryCode = async (ip) => {
+  if (!ip || isPrivateIp(ip)) return null;
+
+  const cached = cacheGet(ip);
+  if (cached !== undefined) return cached;
+
+  const geo = geoip.lookup(ip);
+  if (geo && geo.country) {
+    cacheSet(ip, geo.country);
+    return geo.country;
+  }
+
+  const external = await lookupCountryExternal(ip);
+  // Resultado nulo fica em cache por menos tempo para permitir nova tentativa
+  cacheSet(ip, external, external ? GEO_CACHE_TTL_MS : 60 * 60 * 1000);
+  return external;
+};
+
+// Nome do país em português + bandeira, a partir do código ISO (ex.: 'AO' -> 'Angola 🇦🇴')
+let regionNames = null;
+try { regionNames = new Intl.DisplayNames(['pt'], { type: 'region' }); } catch (e) { regionNames = null; }
+
+const flagEmoji = (code) =>
+  code.toUpperCase().replace(/./g, (c) => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65));
+
+const formatCountry = (code) => {
+  if (!code || !/^[A-Z]{2}$/i.test(code)) return 'Desconhecido';
+  const upper = code.toUpperCase();
+  let name = null;
+  try { name = regionNames ? regionNames.of(upper) : null; } catch (e) { name = null; }
+  if (!name || name === upper) name = upper;
+  return `${name} ${flagEmoji(upper)}`;
+};
+
 // Endpoint de Health Check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK' });
@@ -354,7 +443,8 @@ function serializePlan(uid, data = {}) {
   const since = data.planSince && typeof data.planSince.toDate === 'function' ? data.planSince.toDate().toISOString() : null;
   return {
     uid,
-    plan: data.plan === 'lifetime' ? 'lifetime' : 'free',
+    // tolera ' lifetime' / 'Lifetime' escritos à mão na consola do Firestore
+    plan: String(data.plan || '').trim().toLowerCase() === 'lifetime' ? 'lifetime' : 'free',
     planSince: since,
     stripeCustomerId: data.stripeCustomerId || null,
   };
