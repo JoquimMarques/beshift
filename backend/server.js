@@ -363,6 +363,7 @@ app.get('/api/stats/:shortId', authenticate, async (req, res) => {
         views.push({
             country: data.country || 'Desconhecido',
             countryCode: data.countryCode || null,
+            userAgent: data.userAgent || null,
             timestamp: data.timestamp ? data.timestamp.toDate() : new Date()
         });
     });
